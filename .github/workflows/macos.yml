@@ -1,0 +1,84 @@
+name: macOS build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Homebrew's SDL bottles only load on the macOS version they were built for,
+  # so SDL2 is built here with the same deployment target as the game.
+  SDL2_VERSION: "2.32.10"
+  MACOSX_DEPLOYMENT_TARGET: "12.0"
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install ninja
+
+      - name: Cache SDL2
+        id: sdl-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sdl2
+          key: sdl2-${{ env.SDL2_VERSION }}-macos${{ env.MACOSX_DEPLOYMENT_TARGET }}-arm64
+
+      - name: Build SDL2 ${{ env.SDL2_VERSION }}
+        if: steps.sdl-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o sdl2.tar.gz \
+            "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz"
+          tar -xzf sdl2.tar.gz
+          cmake -S "SDL2-${SDL2_VERSION}" -B sdl2-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${RUNNER_TEMP}/sdl2" \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF
+          cmake --build sdl2-build
+          cmake --install sdl2-build
+
+      - name: Build standalone package
+        # Builds USA and PAL, runs the offline tests, bundles SDL, signs ad hoc
+        # and checks the package loads with no build-machine paths.
+        run: packaging/macos/package-standalone.sh --clean --sdl-prefix "${RUNNER_TEMP}/sdl2"
+
+      - name: Verify distributable contains no game data
+        run: |
+          if find . -path './.git' -prune -o -type f \( -iname '*.iso' -o -iname '*.gcm' -o -iname '*.rvz' -o -path './assets/dataDir/*' \) -print -quit | grep -q .; then
+            echo 'Proprietary game data found in repository'
+            exit 1
+          fi
+
+      - name: Archive package
+        # ditto keeps execute permissions and code signatures, and Finder
+        # extracts the result with a double-click.
+        run: ditto -c -k --keepParent packaging/macos/out/nectar-macos nectar-macos-arm64.zip
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nectar-macos-arm64
+          path: nectar-macos-arm64.zip
+
+  release:
+    # Pushing a tag such as v0.9.1 publishes the package as a GitHub release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nectar-macos-arm64
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: nectar-macos-arm64.zip
+          generate_release_notes: true

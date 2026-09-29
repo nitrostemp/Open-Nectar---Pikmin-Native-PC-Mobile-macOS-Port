@@ -3,6 +3,8 @@
 
 #if defined(_WIN32)
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <iconv.h>
 #endif
 
 #include <algorithm>
@@ -25,7 +27,8 @@ namespace {
  * Linux those bytes become the filename unchanged, which is why extraction has
  * always worked there. On Windows fs::path converts a narrow string through the
  * active code page and throws filesystem_error on an illegal sequence, aborting
- * the install a few percent in.
+ * the install a few percent in. macOS (APFS) refuses any name that is not valid
+ * UTF-8, so the same decoding is needed there.
  *
  * Decode explicitly instead: UTF-8 first, then Shift-JIS, and finally a
  * byte-preserving widening that cannot fail. The last step keeps a file with an
@@ -57,6 +60,53 @@ fs::path discNameToPath(const std::string& name)
 		for (unsigned char byte : name) wide.push_back(static_cast<wchar_t>(byte));
 	}
 	return fs::path(wide);
+#elif defined(__APPLE__)
+	const auto validUtf8 = [](const std::string& text) {
+		for (std::size_t i = 0; i < text.size();) {
+			const unsigned char lead = static_cast<unsigned char>(text[i]);
+			std::size_t extra;
+			if (lead < 0x80) extra = 0;
+			else if ((lead & 0xE0) == 0xC0) extra = 1;
+			else if ((lead & 0xF0) == 0xE0) extra = 2;
+			else if ((lead & 0xF8) == 0xF0) extra = 3;
+			else return false;
+			if (i + extra >= text.size() && extra != 0) return false;
+			for (std::size_t k = 1; k <= extra; ++k) {
+				if ((static_cast<unsigned char>(text[i + k]) & 0xC0) != 0x80) return false;
+			}
+			i += extra + 1;
+		}
+		return true;
+	};
+	if (validUtf8(name)) return fs::path(name);
+
+	iconv_t cd = iconv_open("UTF-8", "SHIFT_JIS");
+	if (cd != (iconv_t)-1) {
+		std::string in = name;
+		std::string out(name.size() * 4, '\0');
+		char* inPtr = in.data();
+		char* outPtr = out.data();
+		std::size_t inLeft = in.size();
+		std::size_t outLeft = out.size();
+		const std::size_t result = iconv(cd, &inPtr, &inLeft, &outPtr, &outLeft);
+		iconv_close(cd);
+		if (result != (std::size_t)-1 && inLeft == 0) {
+			out.resize(out.size() - outLeft);
+			return fs::path(out);
+		}
+	}
+
+	// Never fails: each byte becomes one Latin-1 character.
+	std::string widened;
+	for (unsigned char byte : name) {
+		if (byte < 0x80) {
+			widened.push_back(static_cast<char>(byte));
+		} else {
+			widened.push_back(static_cast<char>(0xC0 | (byte >> 6)));
+			widened.push_back(static_cast<char>(0x80 | (byte & 0x3F)));
+		}
+	}
+	return fs::path(widened);
 #else
 	return fs::path(name);
 #endif

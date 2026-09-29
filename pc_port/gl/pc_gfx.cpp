@@ -1521,7 +1521,7 @@ static void dim_draw(unsigned char alpha)
     glUniform4f_ptr(sDimColorLoc, 0.0f, 0.0f, 0.0f, float(alpha) / 255.0f);
     glBindVertexArray_ptr(sDimVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
-    glBindVertexArray_ptr(0);
+    glBindVertexArray_ptr(GLuint(sStreamVAO));
     glUseProgram_ptr(0);
     // Same trap as post_apply(): GX thinks the TEV program is still bound
     // and skips glUseProgram. P2D plates then draw with program 0 and show
@@ -1673,7 +1673,7 @@ void pc_gfx_overlay_end(void)
 {
     if (!sOverlayProgram) return;
     glBindTexture(GL_TEXTURE_2D, 0);
-    glBindVertexArray_ptr(0);
+    glBindVertexArray_ptr(GLuint(sStreamVAO));
     glUseProgram_ptr(0);
     for (int i = 0; i < 8; i++) sBoundTextures[i] = 0;
     gl_program_cache_invalidate();
@@ -2961,6 +2961,16 @@ void pc_gfx_init(void) {
                sNativeFramebufferReady ? "active" : "unavailable", sRenderScale,
                sDepthIsTexture ? "texture (readable)" : "renderbuffer (not readable)");
     }
+    // A core profile (the only kind macOS offers) has no default vertex
+    // array: attribute setup and every draw on VAO 0 fail with
+    // GL_INVALID_OPERATION and the window stays black. Give the streaming
+    // path a VAO of its own; passes that bind another one restore this one.
+    if (glGenVertexArrays_ptr && glBindVertexArray_ptr) {
+        GLuint streamVAO = 0;
+        glGenVertexArrays_ptr(1, &streamVAO);
+        glBindVertexArray_ptr(streamVAO);
+        sStreamVAO = GLint(streamVAO);
+    }
     setup_vertex_attribs();
     gl_error_checkpoint("vertex array setup");
     mesh_arena_init();
@@ -3830,7 +3840,7 @@ static bool dof_build()
         }
     }
 
-    glBindVertexArray_ptr(0);
+    glBindVertexArray_ptr(GLuint(sStreamVAO));
     return true;
 }
 
@@ -3873,7 +3883,7 @@ static bool bloom_build()
         glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
-    glBindVertexArray_ptr(0);
+    glBindVertexArray_ptr(GLuint(sStreamVAO));
     return true;
 }
 
@@ -3978,7 +3988,7 @@ static bool ao_build()
         glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
-    glBindVertexArray_ptr(0);
+    glBindVertexArray_ptr(GLuint(sStreamVAO));
     return true;
 }
 
@@ -4153,7 +4163,7 @@ static GLuint post_apply(bool allowDof)
     // the last draw was doing; the geometry comes from gl_VertexID.
     glBindVertexArray_ptr(sPostVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
-    glBindVertexArray_ptr(0);
+    glBindVertexArray_ptr(GLuint(sStreamVAO));
 
     glUseProgram_ptr(0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -4422,6 +4432,27 @@ void pc_gfx_present(void) {
         glInvalidateFramebuffer_ptr(GL_FRAMEBUFFER, 1, colourAttachment);
     }
     glEnable(GL_SCISSOR_TEST);
+}
+
+// macOS presents nothing -- a black window -- when SDL_GL_SwapWindow runs with
+// a framebuffer object bound, even though the blit into the window's
+// framebuffer succeeded and reads back correctly. Mesa and the Windows drivers
+// swap the default framebuffer regardless of the binding, so the swap is
+// bracketed everywhere; it costs two binds per frame.
+static GLint sSwapDrawFramebuffer = 0;
+static GLint sSwapReadFramebuffer = 0;
+
+void pc_gfx_before_swap(void) {
+    if (!glBindFramebuffer_ptr) return;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &sSwapDrawFramebuffer);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &sSwapReadFramebuffer);
+    glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+}
+
+void pc_gfx_after_swap(void) {
+    if (!glBindFramebuffer_ptr) return;
+    glBindFramebuffer_ptr(GL_DRAW_FRAMEBUFFER, GLuint(sSwapDrawFramebuffer));
+    glBindFramebuffer_ptr(GL_READ_FRAMEBUFFER, GLuint(sSwapReadFramebuffer));
 }
 
 void pc_gfx_set_projection(const Mtx44 mtx, GXProjectionType type) {

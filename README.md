@@ -9,7 +9,7 @@ This project builds upon the decompilation by [projectPiki/pikmin](https://githu
 ## Project Status
 
 **Functional:**
-- Native builds for Linux x86-64 and Windows x86-64, Android from the same source
+- Native builds for Linux x86-64, Windows x86-64 and macOS (Apple Silicon), Android from the same source
 - Most of the game playable from start to finish
 - 30, 60 or 120 FPS gameplay, selectable in-game
 - Full audio: the game's original JAudio engine, with a software DSP
@@ -243,6 +243,23 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 ```
+
+### macOS (Apple Silicon)
+
+```sh
+xcode-select --install
+brew install cmake ninja sdl2
+
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+macOS offers no OpenGL compatibility profile, so the game runs on a Core 4.1
+context. `packaging/macos/package-standalone.sh` builds the USA and PAL
+executables, bundles SDL in `lib/`, signs everything ad hoc and verifies the
+result; `.github/workflows/macos.yml` runs it on every push and publishes the
+zip as a GitHub release when a `v*` tag is pushed.
 
 ### Choosing which release to build
 
