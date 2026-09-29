@@ -1,0 +1,179 @@
+name: Packages
+
+# Builds the same downloads upstream publishes (Linux tarball, Windows zip,
+# Android APK) plus the macOS zip. Every push builds Windows, macOS and
+# Android as artifacts (linux.yml already covers Linux); pushing a tag builds
+# all four and publishes them as a GitHub release.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  SDL2_VERSION: "2.32.10"
+
+jobs:
+  linux:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config binutils libsdl2-dev libgl1-mesa-dev
+      - name: Build standalone package
+        run: packaging/linux/package-standalone.sh --clean
+      - name: Archive package with executable permissions
+        run: tar -czf nectar-linux.tar.gz -C packaging/linux/out nectar-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nectar-linux
+          path: nectar-linux.tar.gz
+
+  windows:
+    # Cross-compiled with MinGW-w64, as packaging/windows expects.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MinGW-w64
+        run: sudo apt-get update && sudo apt-get install -y cmake mingw-w64 zip
+      - name: Use the POSIX thread model
+        # Matches the published package, which ships libwinpthread-1.dll.
+        run: |
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+      - name: Fetch SDL2 for MinGW
+        # The repository carries third_party/SDL2-mingw64 as a symlink into the
+        # maintainer's own machine; replace it with the official SDL release.
+        run: |
+          curl -fsSL -o sdl2-mingw.tar.gz \
+            "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-mingw.tar.gz"
+          tar -xzf sdl2-mingw.tar.gz
+          rm -rf third_party/SDL2-mingw64
+          mkdir -p third_party/SDL2-mingw64
+          cp -R "SDL2-${SDL2_VERSION}/x86_64-w64-mingw32/." third_party/SDL2-mingw64/
+      - name: Build standalone package
+        run: packaging/windows/package-standalone.sh --clean
+      - name: Archive package
+        run: (cd packaging/windows/out && zip -qr "${GITHUB_WORKSPACE}/nectar-windows.zip" nectar-windows)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nectar-windows
+          path: nectar-windows.zip
+
+  macos:
+    runs-on: macos-15
+    env:
+      # Homebrew's SDL bottles only load on the macOS version they were built
+      # for, so SDL2 is built here with the same deployment target as the game.
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: brew install ninja
+      - name: Cache SDL2
+        id: sdl-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sdl2
+          key: sdl2-${{ env.SDL2_VERSION }}-macos${{ env.MACOSX_DEPLOYMENT_TARGET }}-arm64
+      - name: Build SDL2
+        if: steps.sdl-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o sdl2.tar.gz \
+            "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz"
+          tar -xzf sdl2.tar.gz
+          cmake -S "SDL2-${SDL2_VERSION}" -B sdl2-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${RUNNER_TEMP}/sdl2" \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF
+          cmake --build sdl2-build
+          cmake --install sdl2-build
+      - name: Build standalone package
+        # Builds USA and PAL, runs the offline tests, bundles SDL, signs ad hoc
+        # and checks the package loads with no build-machine paths.
+        run: packaging/macos/package-standalone.sh --clean --sdl-prefix "${RUNNER_TEMP}/sdl2"
+      - name: Archive package
+        # ditto keeps execute permissions and code signatures, and Finder
+        # extracts the result with a double-click.
+        run: ditto -c -k --keepParent packaging/macos/out/nectar-macos nectar-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nectar-macos-arm64
+          path: nectar-macos-arm64.zip
+
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Install SDK packages
+        # The versions android/app/build.gradle asks for.
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --install \
+            "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          echo "sdk.dir=${ANDROID_HOME}" > android/local.properties
+      - name: Signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "${KEYSTORE_BASE64}" ]; then
+            printf '%s' "${KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/release.jks"
+            {
+              echo "storeFile=${RUNNER_TEMP}/release.jks"
+              echo "storePassword=${KEYSTORE_PASSWORD}"
+              echo "keyAlias=${KEY_ALIAS}"
+              echo "keyPassword=${KEY_PASSWORD}"
+            } > android/keystore.properties
+            echo "flags=" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK is signed with a debug key."
+            echo "flags=--debug-key" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Build APK
+        run: packaging/android/package-apk.sh ${{ steps.signing.outputs.flags }}
+      - name: Remove signing material
+        if: always()
+        run: rm -f android/keystore.properties "${RUNNER_TEMP}/release.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-nectar-apk
+          path: |
+            packaging/android/out/*.apk
+            packaging/android/out/*.apk.sha256
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [linux, windows, macos, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Verify every platform is present
+        run: |
+          ls -la dist
+          for pattern in nectar-linux.tar.gz nectar-windows.zip nectar-macos-arm64.zip 'open_nectar_*.apk'; do
+            if ! compgen -G "dist/${pattern}" > /dev/null; then
+              echo "Missing ${pattern}"
+              exit 1
+            fi
+          done
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
