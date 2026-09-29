@@ -169,7 +169,10 @@ mkdir -p "${licenses_dir}"
 # sin su aviso de licencia.
 owning_package() {
     local lib="$1" candidate alternate spelling package
-    for candidate in "$lib" "$(readlink -f "$lib")"; do
+    # Primero el fichero resuelto, que es el que se copia: el enlace del
+    # soname puede ser de otro paquete (en Ubuntu 26.04 libSDL2-2.0.so.0 es
+    # de sdl2-compat y el fichero incluido, de libsdl2-classic).
+    for candidate in "$(readlink -f "$lib")" "$lib"; do
         case "$candidate" in
             /usr/lib/*) alternate="/lib/${candidate#/usr/lib/}" ;;
             /lib/*)     alternate="/usr/lib/${candidate#/lib/}" ;;
