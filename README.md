@@ -387,10 +387,11 @@ the README that goes with it.
 ### Release builds (GitHub Actions)
 
 `.github/workflows/packages.yml` runs the four packaging scripts above on
-GitHub's runners: Linux and Windows (cross-compiled with MinGW) on Ubuntu,
-Android on Ubuntu with the SDK's NDK, and macOS on an Apple Silicon runner. Every
-push builds the Windows, macOS and Android packages as downloadable artifacts;
-pushing a tag builds all four and publishes them as a release:
+GitHub's runners: Linux in an Ubuntu 26.04 container (the package bundles the
+build system's libraries, so this sets what ships), Windows cross-compiled with
+MinGW on Ubuntu, Android on Ubuntu with the SDK's NDK, and macOS on an Apple
+Silicon runner. Every push builds all four as downloadable artifacts; pushing a
+tag also publishes them as a release:
 
 ```sh
 git tag 0.9.1

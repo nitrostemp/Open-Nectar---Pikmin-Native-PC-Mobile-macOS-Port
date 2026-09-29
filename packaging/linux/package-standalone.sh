@@ -162,11 +162,34 @@ printf '  %d librerías incluidas.\n' "$copied"
 # zlib, etc.): redistribuirlas exige acompañarlas de sus textos legales.
 licenses_dir="${output_dir}/lib/licenses"
 mkdir -p "${licenses_dir}"
+# ldd informa /lib/x86_64-linux-gnu en sistemas con /usr fusionado, dpkg
+# puede tener el fichero registrado bajo /usr/lib o bajo /lib, y readlink -f
+# cambia el soname por el fichero versionado. Se prueban todas las grafías:
+# con solo la ruta resuelta, Ubuntu 22.04 dejaba glibc, libgcc, dbus y expat
+# sin su aviso de licencia.
+owning_package() {
+    local lib="$1" candidate alternate spelling package
+    for candidate in "$lib" "$(readlink -f "$lib")"; do
+        case "$candidate" in
+            /usr/lib/*) alternate="/lib/${candidate#/usr/lib/}" ;;
+            /lib/*)     alternate="/usr/lib/${candidate#/lib/}" ;;
+            *)          alternate="$candidate" ;;
+        esac
+        for spelling in "$candidate" "$alternate"; do
+            package="$(dpkg-query -S "$spelling" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
+            if [ -n "$package" ]; then
+                printf '%s\n' "$package"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
 if command -v dpkg-query >/dev/null 2>&1; then
     declare -A seen_packages=()
     for lib in "${source_libs[@]}"; do
-        real_lib="$(readlink -f "$lib")"
-        package="$(dpkg-query -S "$real_lib" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
+        package="$(owning_package "$lib" || true)"
         if [ -n "$package" ] && [ -z "${seen_packages[$package]:-}" ]; then
             seen_packages[$package]=1
             for notice in "/usr/share/doc/${package}/copyright" "/usr/share/doc/${package}/COPYING"; do
@@ -211,6 +234,14 @@ printf '%s\n' '[5/5] Verificando el paquete...'
 if LD_LIBRARY_PATH="${output_dir}/lib" ldd "${output_dir}/nectar.real" | grep -q 'not found'; then
     printf 'Faltan librerías en el paquete:\n' >&2
     LD_LIBRARY_PATH="${output_dir}/lib" ldd "${output_dir}/nectar.real" | grep 'not found' >&2
+    exit 1
+fi
+
+# sdl2-compat (el "libsdl2" por defecto en distros recientes) carga SDL3 con
+# dlopen, que ldd no ve: el paquete saldría sin SDL3 y no arrancaría. Hay que
+# compilar con el SDL2 clásico (libsdl2-classic en Ubuntu 26.04 y Debian 13).
+if strings "${output_dir}/lib/libSDL2-2.0.so.0" 2>/dev/null | grep -q 'Failed loading SDL3 library'; then
+    printf 'El SDL2 incluido es sdl2-compat; instala el SDL2 clásico (libsdl2-classic).\n' >&2
     exit 1
 fi
 

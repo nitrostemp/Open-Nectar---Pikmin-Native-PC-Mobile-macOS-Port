@@ -1,9 +1,8 @@
 name: Packages
 
 # Builds the same downloads upstream publishes (Linux tarball, Windows zip,
-# Android APK) plus the macOS zip. Every push builds Windows, macOS and
-# Android as artifacts (linux.yml already covers Linux); pushing a tag builds
-# all four and publishes them as a GitHub release.
+# Android APK) plus the macOS zip. Every push builds all four as artifacts;
+# pushing a tag also publishes them as a GitHub release.
 
 on:
   push:
@@ -17,20 +16,57 @@ env:
 
 jobs:
   linux:
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    # The package bundles the build system's own libraries, glibc included, so
+    # the build distro decides what ships. Ubuntu 26.04 matches the libraries
+    # in upstream's published package.
+    container: ubuntu:26.04
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config binutils libsdl2-dev libgl1-mesa-dev
+        # libsdl2-classic is the real SDL2. The default libsdl2 runtime on
+        # 26.04 is sdl2-compat, which dlopens SDL3 where ldd cannot see it.
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config binutils file \
+            libsdl2-dev libsdl2-classic libgl1-mesa-dev
       - name: Build standalone package
         run: packaging/linux/package-standalone.sh --clean
+      - name: Check licence notices for the core libraries
+        run: |
+          for package in libc6 libgcc-s1 libstdc++6; do
+            ls packaging/linux/out/nectar-linux/lib/licenses/${package}.* > /dev/null
+          done
       - name: Archive package with executable permissions
         run: tar -czf nectar-linux.tar.gz -C packaging/linux/out nectar-linux
       - uses: actions/upload-artifact@v4
         with:
           name: nectar-linux
           path: nectar-linux.tar.gz
+
+  linux-smoke:
+    # Same check as linux.yml: the package must run on a clean, older distro
+    # with only the documented graphics runtime installed.
+    needs: linux
+    runs-on: ubuntu-latest
+    container: debian:12
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nectar-linux
+      - name: Extract package with executable permissions
+        run: tar -xzf nectar-linux.tar.gz
+      - name: Install documented graphics runtime
+        run: apt-get update && apt-get install -y --no-install-recommends libgl1 libopengl0 libglvnd0 libgbm1 libdrm2 libgl1-mesa-dri
+      - name: Standalone package runs on clean Debian 12
+        run: |
+          cd nectar-linux
+          ./nectar-launcher --help
+          if ./lib/ld-linux-x86-64.so.2 --library-path ./lib --list ./nectar.real | grep 'not found'; then
+            echo 'Unresolved dependencies in the standalone package'
+            exit 1
+          fi
 
   windows:
     # Cross-compiled with MinGW-w64, as packaging/windows expects.
@@ -155,7 +191,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux, windows, macos, android]
+    needs: [linux, linux-smoke, windows, macos, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
