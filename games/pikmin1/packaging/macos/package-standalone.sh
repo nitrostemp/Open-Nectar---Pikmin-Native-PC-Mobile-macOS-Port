@@ -174,7 +174,9 @@ done
 
 # sdl2-compat (what Homebrew installs as "sdl2") is a thin layer that dlopens
 # SDL3 at runtime; otool cannot see that. It looks for @loader_path/libSDL3.dylib.
-if [[ -n "${sdl_source}" ]] && strings "${sdl_source}" | grep -q 'Failed loading SDL3 library'; then
+# grep without -q reads to the end: an early exit would SIGPIPE strings and,
+# under pipefail, make a match look like a miss.
+if [[ -n "${sdl_source}" ]] && strings "${sdl_source}" | grep 'Failed loading SDL3 library' >/dev/null; then
     sdl3_source=""
     for candidate in "$(dirname -- "${sdl_source}")/libSDL3.0.dylib" \
                      "$(pkg-config --variable=libdir sdl3 2>/dev/null || true)/libSDL3.0.dylib" \
