@@ -4,8 +4,9 @@ name: Packages
 # AppImage, Windows zip, Android APK) plus the macOS zip. Every push builds
 # them all as artifacts; pushing a tag also publishes them as a GitHub release.
 #
-# The game lives in games/pikmin1 since the Fusion layout; Pikmin 2 has no
-# release packages upstream yet.
+# The game lives in games/pikmin1 since the Fusion layout. Pikmin 2 has no
+# release packages upstream yet; pikmin2-macos only checks that it still
+# builds and passes its tests on macOS, and does not gate releases.
 
 on:
   push:
@@ -178,6 +179,23 @@ jobs:
           path: |
             ${{ env.GAME_DIR }}/packaging/android/out/*.apk
             ${{ env.GAME_DIR }}/packaging/android/out/*.apk.sha256
+
+  pikmin2-macos:
+    # scripts/build-pikmin2-macos.sh: case-sensitive disk image + Homebrew GCC,
+    # the same way it is built on a Mac.
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build tools
+        run: brew install gcc ninja sdl2
+      - name: Build Pikmin 2
+        run: scripts/build-pikmin2-macos.sh
+      - name: Build and run the tests
+        run: |
+          build_dir=build/macos-cs/build-RelWithDebInfo
+          cmake --build "${build_dir}"
+          ctest --test-dir "${build_dir}" --output-on-failure
 
   release:
     if: startsWith(github.ref, 'refs/tags/')

@@ -24,14 +24,9 @@ mirror="${volume}/pikmin2"
 build_dir="${volume}/build-${build_type}"
 output="${fusion_root}/build/pikmin2/pikmin2_pc"
 
-gxx=""
-for version in 16 15 14 13; do
-    if command -v "g++-${version}" >/dev/null 2>&1; then
-        gxx="g++-${version}"
-        gcc="gcc-${version}"
-        break
-    fi
-done
+# The newest Homebrew GCC on PATH (g++-16, g++-17, ...).
+gxx="$(compgen -c | grep -E '^g\+\+-[0-9]+$' | sort -t- -k2 -n | tail -n1 || true)"
+gcc="${gxx/g++/gcc}"
 if [[ -z "${gxx}" ]]; then
     echo "Pikmin 2 needs GCC on macOS: brew install gcc" >&2
     exit 1
