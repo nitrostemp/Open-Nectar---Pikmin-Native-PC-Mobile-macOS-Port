@@ -19,14 +19,22 @@ namespace pikmin {
 namespace launcher {
 namespace {
 
+#if defined(__APPLE__)
+// Los paquetes de macOS solo se publican en el fork que los compila.
+constexpr const char* kLatestReleaseApi
+    = "https://api.github.com/repos/nitrostemp/Open-Nectar---Pikmin-Native-PC-Mobile-macOS-Port/releases/latest";
+#else
 constexpr const char* kLatestReleaseApi
     = "https://api.github.com/repos/SSunnKing/Open-Nectar---Pikmin-Native-PC-Mobile-Port/releases/latest";
+#endif
 
 // Paquetes de este sistema en un release, por orden de preferencia. En Linux
 // se publican los dos formatos; el .tar.gz se extrae sin más, el AppImage
-// queda como alternativa.
+// queda como alternativa. En macOS nunca el de Linux: son binarios x86-64 ELF.
 #ifdef _WIN32
 const char* const kAssetNames[] = { "nectar-windows.zip" };
+#elif defined(__APPLE__)
+const char* const kAssetNames[] = { "nectar-macos-arm64.zip" };
 #else
 const char* const kAssetNames[] = { "nectar-linux.tar.gz", "Open_Nectar-x86_64.AppImage" };
 #endif

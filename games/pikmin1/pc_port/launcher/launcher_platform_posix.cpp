@@ -1,6 +1,7 @@
 // Implementación POSIX de la interfaz de plataforma del launcher.
 // Los diálogos gráficos se delegan en zenity o kdialog; si no hay ninguno,
-// el launcher recurre a su instalador en modo texto.
+// el launcher recurre a su instalador en modo texto. En macOS los da
+// osascript, que viene con el sistema.
 
 #include "launcher_platform.h"
 
@@ -78,6 +79,31 @@ std::string runDialog(const char* program, const std::vector<std::string>& args)
     return result;
 }
 
+#if defined(__APPLE__)
+// Literal de cadena de AppleScript: comillas y barras escapadas.
+std::string appleScriptString(const std::string& text)
+{
+    std::string quoted = "\"";
+    for (char c : text) {
+        if (c == '"' || c == '\\') quoted += '\\';
+        quoted += c;
+    }
+    return quoted + "\"";
+}
+
+// Cancelar un diálogo hace que osascript salga con error: runDialog devuelve
+// entonces una cadena vacía, igual que con zenity.
+std::string runAppleScript(const std::string& script)
+{
+    return runDialog("osascript", { "-e", script });
+}
+
+fs::path chooseFileAppleScript(const std::string& prompt)
+{
+    return runAppleScript("POSIX path of (choose file with prompt " + appleScriptString(prompt) + ")");
+}
+#endif
+
 } // namespace
 
 fs::path executablePath()
@@ -124,7 +150,11 @@ unsigned long currentProcessId()
 
 bool hasGraphicalDialogs()
 {
+#if defined(__APPLE__)
+    return true;
+#else
     return commandExists("zenity") || commandExists("kdialog");
+#endif
 }
 
 bool stdinIsTerminal()
@@ -134,6 +164,11 @@ bool stdinIsTerminal()
 
 void showMessage(const std::string& title, const std::string& message, bool error)
 {
+#if defined(__APPLE__)
+    runAppleScript("display alert " + appleScriptString(title) + " message " + appleScriptString(message)
+                   + (error ? " as critical" : " as informational") + " buttons {\"OK\"} default button 1");
+    return;
+#endif
     if (commandExists("zenity")) {
         runDialog("zenity", { error ? "--error" : "--info", "--title=" + title, "--text=" + message,
                                "--width=480" });
@@ -148,6 +183,10 @@ void showMessage(const std::string& title, const std::string& message, bool erro
 
 fs::path askForInstallDirectory(const std::string& title)
 {
+#if defined(__APPLE__)
+    return runAppleScript("POSIX path of (choose folder with prompt " + appleScriptString("Open Nectar - " + title)
+                          + " default location (path to home folder))");
+#endif
     if (commandExists("zenity")) {
         std::string initial;
         if (const char* home = std::getenv("HOME")) initial = fs::path(home).string() + "/";
@@ -170,6 +209,11 @@ fs::path askForInstallDirectory(const std::string& title)
 
 fs::path askForImage()
 {
+#if defined(__APPLE__)
+    // Sin filtro de tipos: .gcm, .rvz y compañía no tienen UTI en macOS y
+    // saldrían en gris.
+    return chooseFileAppleScript("Open Nectar - Choose your disc image");
+#endif
     if (commandExists("zenity")) {
         const std::string selected = runDialog("zenity", {
             "--file-selection", "--title=Open Nectar - Choose your disc image",
@@ -189,6 +233,11 @@ fs::path askForImage()
 
 fs::path askForFile(const std::string& title, const std::string& filterName, const std::string& patterns)
 {
+#if defined(__APPLE__)
+    (void)filterName;
+    (void)patterns;
+    return chooseFileAppleScript("Open Nectar - " + title);
+#endif
     if (commandExists("zenity")) {
         return runDialog("zenity", { "--file-selection", "--title=Open Nectar - " + title,
                                      "--file-filter=" + filterName + " | " + patterns, "--file-filter=All files | *" });
@@ -203,6 +252,15 @@ fs::path findConverter()
 {
     const auto beside = executablePath().parent_path() / "dolphin-tool";
     if (fs::is_regular_file(beside) && access(beside.c_str(), X_OK) == 0) return beside;
+#if defined(__APPLE__)
+    // En macOS dolphin-tool va dentro de la aplicación de Dolphin.
+    std::vector<fs::path> bundles = { "/Applications/Dolphin.app" };
+    if (const char* home = std::getenv("HOME")) bundles.push_back(fs::path(home) / "Applications/Dolphin.app");
+    for (const fs::path& bundle : bundles) {
+        const fs::path tool = bundle / "Contents/MacOS/dolphin-tool";
+        if (fs::is_regular_file(tool) && access(tool.c_str(), X_OK) == 0) return tool;
+    }
+#endif
     const char* value = std::getenv("PATH");
     if (!value) return {};
     const std::string paths(value);
@@ -220,6 +278,10 @@ fs::path findConverter()
 
 fs::path askForConverter()
 {
+#if defined(__APPLE__)
+    return chooseFileAppleScript("Choose dolphin-tool from your Dolphin installation "
+                                 "(Dolphin.app/Contents/MacOS/dolphin-tool)");
+#endif
     if (commandExists("zenity"))
         return runDialog("zenity", { "--file-selection", "--title=Choose dolphin-tool from your Dolphin installation" });
     if (commandExists("kdialog"))
