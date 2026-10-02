@@ -178,20 +178,21 @@ files until the `xattr` line above clears their quarantine flag. It needs a Mac
 with Apple Silicon (M1 or later) on macOS 12 Monterey or newer, and about 1 GB
 free where you install it.
 
-Run the launcher:
+Double-click `nectar-launcher` (or run `./nectar-launcher`). It opens the Open
+Nectar launcher: **Install** asks for your disc image and a folder with the
+usual macOS dialogs, verifies the image, extracts the assets and copies the game
+there. Afterwards the launcher in that folder starts the game from its cover.
+The same install works without any window:
 
 ```sh
 ./nectar-launcher --rom /path/to/Pikmin.iso --install-dir ~/Games/OpenNectar
 ```
 
-It verifies the image, extracts the assets, copies the game into that folder and
-starts it. Double-clicking `nectar-launcher` in Finder opens the same installer
-in Terminal, which asks for both paths. To play afterwards, run
-`./nectar-launcher` again from the installation folder.
-
 SDL travels in `lib/` next to the executables, so nothing needs installing
 through Homebrew; keep the folder together. Saves stay in `save/` inside the
-installation folder, as on Linux and Windows.
+installation folder, as on Linux and Windows. The launcher's update check looks
+for `nectar-macos-arm64.zip` in this fork's releases, since upstream does not
+publish a macOS build.
 
 ### Android
 
@@ -405,16 +406,16 @@ the README that goes with it.
 
 ### Release builds (GitHub Actions)
 
-`.github/workflows/packages.yml` runs the four packaging scripts above on
-GitHub's runners: Linux in an Ubuntu 26.04 container (the package bundles the
-build system's libraries, so this sets what ships), Windows cross-compiled with
-MinGW on Ubuntu, Android on Ubuntu with the SDK's NDK, and macOS on an Apple
-Silicon runner. Every push builds all four as downloadable artifacts; pushing a
-tag also publishes them as a release:
+`.github/workflows/packages.yml` (at the root of the Fusion repository) runs
+the packaging scripts above on GitHub's runners: `packaging/linux/build-release.sh`
+on Ubuntu (its own Ubuntu 20.04 container, tarball and AppImage), Windows
+cross-compiled with MinGW on Ubuntu, Android on Ubuntu with the SDK's NDK, and
+macOS on an Apple Silicon runner. Every push builds them all as downloadable
+artifacts; pushing a tag also publishes them as a release:
 
 ```sh
-git tag 0.9.1
-git push origin 0.9.1
+git tag 0.9.2-macos
+git push origin 0.9.2-macos
 ```
 
 The APK is signed with the project key when the repository has the secrets
