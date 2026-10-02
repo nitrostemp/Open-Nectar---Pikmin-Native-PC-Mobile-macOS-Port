@@ -92,18 +92,29 @@ struct CardHostAllocScope {
 // (Program Files, /usr, /opt, an AppImage's read-only mount, Proton prefixes
 // with a read-only game dir). Issue #34: on Linux the card was written beside
 // the executable, silently failed there and the progress was gone on restart.
+// Pikmin 2 has its own folder: "Nectar" and "pikmin-native" belong to Pikmin 1,
+// and the two games must not share a memory card folder.
 fs::path userDataSaveDir()
 {
 #if defined(_WIN32)
 	if (const char* local = std::getenv("LOCALAPPDATA"); local != nullptr && *local != '\0')
-		return fs::path(local) / "Nectar" / "save";
+		return fs::path(local) / "Nectar2" / "save";
 #else
 	if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg != nullptr && *xdg != '\0')
-		return fs::path(xdg) / "pikmin-native" / "save";
+		return fs::path(xdg) / "pikmin2-native" / "save";
 	if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0')
-		return fs::path(home) / ".local" / "share" / "pikmin-native" / "save";
+		return fs::path(home) / ".local" / "share" / "pikmin2-native" / "save";
 #endif
 	return {};
+}
+
+// True when a save folder holds Pikmin 2's file on either card. The old shared
+// folders can hold Pikmin 1's cards, which are not this game's progress.
+bool holdsPikmin2Card(const fs::path& dir)
+{
+	std::error_code error;
+	return fs::exists(dir / "card0" / "Pikmin2_SaveData", error)
+	    || fs::exists(dir / "card1" / "Pikmin2_SaveData", error);
 }
 
 // True when files can actually be created under `dir` (creating it if needed).
@@ -136,8 +147,10 @@ fs::path saveRoot()
 		const fs::path preferred = install.empty() ? fs::path("save") : install / "save";
 		if (fs::exists(preferred / "card0", error)) return preferred;
 
-		// Places earlier builds wrote to. A card in one of these is somebody's
-		// progress, so find it and bring it along rather than start empty.
+		// Places earlier builds wrote to. A Pikmin 2 card in one of these is
+		// somebody's progress, so find it and bring it along rather than start
+		// empty. Earlier builds fell back to Pikmin 1's folders, so those are
+		// still searched, but only a card holding Pikmin 2's file is taken.
 		std::vector<fs::path> legacy;
 		legacy.emplace_back("save"); // relative to the working directory
 #if defined(_WIN32)
@@ -153,7 +166,7 @@ fs::path saveRoot()
 #endif
 		for (const fs::path& candidate : legacy) {
 			if (fs::equivalent(candidate, preferred, error) && !error) continue;
-			if (!fs::exists(candidate / "card0", error)) continue;
+			if (!holdsPikmin2Card(candidate)) continue;
 			// Copy rather than move: if anything goes wrong the original is
 			// still there, and an orphaned folder is cheaper than a lost save.
 			fs::create_directories(preferred, error);
