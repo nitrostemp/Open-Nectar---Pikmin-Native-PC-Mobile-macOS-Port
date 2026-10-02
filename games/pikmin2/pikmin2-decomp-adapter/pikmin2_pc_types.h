@@ -72,6 +72,17 @@ typedef unsigned int p2uint;
 #include <math.h>
 #endif
 
+/* Las cabeceras de libc del decomp (include/stl/string.h, stdio.h, stdlib.h,
+ * math.h) usan las mismas guardas que glibc: en Linux las de arriba ya las
+ * definen y el decomp nunca entra en ellas. Las de macOS se llaman distinto
+ * (_STRING_H_, __MATH_H__...), así que se definen a mano para saltarlas igual. */
+#if defined(__APPLE__)
+#define _STRING_H
+#define _STDIO_H
+#define _STDLIB_H
+#define _MATH_H
+#endif
+
 /* ── Square: macro habitual del decomp (no esta en types.h) ── */
 #ifndef SQUARE
 #define SQUARE(x) ((x) * (x))

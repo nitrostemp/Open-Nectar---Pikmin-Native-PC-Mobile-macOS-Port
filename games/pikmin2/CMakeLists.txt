@@ -60,9 +60,9 @@ option(PIKMIN_GLES "Build with OpenGL ES 3.0 renderer" ${PIKMIN_GLES_DEFAULT})
 # ─── Flags de compilación: código decompilado ───
 # Fuerza nuestro header de adaptación ANTES de cualquier include del juego.
 set(CLANG_LEGACY_RELAXATIONS
-    $<$<CXX_COMPILER_ID:Clang>:-Wno-register>
-    $<$<CXX_COMPILER_ID:Clang>:-Wno-address-of-temporary>
-    $<$<CXX_COMPILER_ID:Clang>:-Wno-unknown-warning-option>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-register>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-address-of-temporary>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-unknown-warning-option>
 )
 set(LEGACY_COMPILE_OPTIONS
     -include "${ADAPTER_DIR}/pikmin2_pc_types.h"
@@ -334,6 +334,19 @@ if(PIKMIN2_ENABLE_PORT_LAYER)
     if(NOT WIN32)
         target_link_options(pikmin2_pc PRIVATE -rdynamic)
         target_link_libraries(pikmin2_pc PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+    # macOS: un ejecutable que define operator new sustituye el de todos los
+    # frameworks del sistema. Metal acababa reservando en el heap JKR del juego
+    # (alineado a 4, sin hilos) y fallaba con EXC_ARM_DA_ALIGN al compilar
+    # shaders. Los operadores del juego quedan privados del ejecutable, y
+    # libstdc++ va estática para reservar y liberar con ese mismo par.
+    if(APPLE)
+        target_link_options(pikmin2_pc PRIVATE
+            -static-libstdc++ -static-libgcc
+            "LINKER:-unexported_symbol,__Znwm*"
+            "LINKER:-unexported_symbol,__Znam*"
+            "LINKER:-unexported_symbol,__ZdlPv*"
+            "LINKER:-unexported_symbol,__ZdaPv*")
     endif()
     # pc_window.cpp usa Xlib en Linux de escritorio (como el port de Pikmin 1).
     if(UNIX AND NOT APPLE AND NOT ANDROID)

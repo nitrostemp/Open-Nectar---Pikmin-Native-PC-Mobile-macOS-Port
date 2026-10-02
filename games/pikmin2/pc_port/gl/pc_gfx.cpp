@@ -4979,6 +4979,27 @@ static void close_complete_immediate() {
     if (have >= sExpectedVerts && have > 0) pc_gfx_end();
 }
 
+// macOS presents nothing -- a black window -- when SDL_GL_SwapWindow runs with
+// a framebuffer object bound, even though the blit into the window's
+// framebuffer succeeded and reads back correctly. Mesa and the Windows drivers
+// swap the default framebuffer regardless of the binding, so the swap is
+// bracketed everywhere; it costs two binds per frame.
+static GLint sSwapDrawFramebuffer = 0;
+static GLint sSwapReadFramebuffer = 0;
+
+void pc_gfx_before_swap(void) {
+    if (!glBindFramebuffer_ptr) return;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &sSwapDrawFramebuffer);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &sSwapReadFramebuffer);
+    glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+}
+
+void pc_gfx_after_swap(void) {
+    if (!glBindFramebuffer_ptr) return;
+    glBindFramebuffer_ptr(GL_DRAW_FRAMEBUFFER, GLuint(sSwapDrawFramebuffer));
+    glBindFramebuffer_ptr(GL_READ_FRAMEBUFFER, GLuint(sSwapReadFramebuffer));
+}
+
 void pc_gfx_set_projection(const Mtx44 mtx, GXProjectionType type) {
     close_complete_immediate();
     state_touched();

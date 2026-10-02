@@ -48,6 +48,26 @@
 #  ifndef APIENTRYP
 #    define APIENTRYP GL_APIENTRYP
 #  endif
+#elif defined(__APPLE__)
+// macOS solo ofrece un contexto 2.1 heredado o uno Core 4.1 (sin perfil de
+// compatibilidad); pc_window.cpp decide cuál. <OpenGL/gl.h> aporta los tipos y
+// las funciones 1.x; las cabeceras de Apple no traen los typedef PFNGL*PROC,
+// así que el glext.h de Khronos que distribuye SDL ocupa el lugar de glext.h.
+// Todo lo posterior a GL 1.1 se carga igualmente con SDL_GL_GetProcAddress.
+#  ifndef GL_SILENCE_DEPRECATION
+#    define GL_SILENCE_DEPRECATION
+#  endif
+#  define GL_GLEXT_LEGACY
+#  include <OpenGL/gl.h>
+// gl.h de Apple marca 1.2-2.1 como presentes sin declarar sus PFN; retirar las
+// marcas deja que glext.h emita esos typedef (las constantes coinciden).
+#  undef GL_VERSION_1_2
+#  undef GL_VERSION_1_3
+#  undef GL_VERSION_1_4
+#  undef GL_VERSION_1_5
+#  undef GL_VERSION_2_0
+#  undef GL_VERSION_2_1
+#  include <SDL2/SDL_opengl_glext.h>
 #else
 #  include <GL/gl.h>
 #  include <GL/glext.h>

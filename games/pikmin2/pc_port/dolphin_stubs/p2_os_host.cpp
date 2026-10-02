@@ -1049,7 +1049,10 @@ void VIWaitForRetrace()
 		const int retraceHz = pc_p2_retrace_hz();
 		const u32 swapEvery = (sRefreshHz > 0 && retraceHz > sRefreshHz) ? u32((retraceHz + sRefreshHz - 1) / sRefreshHz) : 1u;
 		if (sRetraceCount % swapEvery == 0) {
+			// macOS presents black if an FBO is bound at swap time.
+			pc_gfx_before_swap();
 			SDL_GL_SwapWindow(window);
+			pc_gfx_after_swap();
 		}
 		// PIKMIN_SHOW_FPS=1: en el titulo de la ventana, actualizaciones de la
 		// seccion por segundo (frames nuevos del juego) y presentaciones.

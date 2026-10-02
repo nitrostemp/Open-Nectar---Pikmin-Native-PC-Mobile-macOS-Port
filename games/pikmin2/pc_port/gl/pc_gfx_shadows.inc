@@ -233,7 +233,7 @@ bool shadow_ensure_resources() {
         glVertexAttribPointer_ptr(kAttrTexCoord0Index, 2, GL_FLOAT, GL_FALSE, sizeof(ShadowVertex), (void*)offsetof(ShadowVertex, u));
         glEnableVertexAttribArray_ptr(kAttrMatrixSlotIndex);
         glVertexAttribPointer_ptr(kAttrMatrixSlotIndex, 1, GL_FLOAT, GL_FALSE, sizeof(ShadowVertex), (void*)offsetof(ShadowVertex, slot));
-        glBindVertexArray_ptr(0);
+        glBindVertexArray_ptr(GLuint(sStreamVAO));
     }
     if (!sShadowArenaVAO && sMeshArena) {
         glGenVertexArrays_ptr(1, &sShadowArenaVAO);
@@ -245,7 +245,7 @@ bool shadow_ensure_resources() {
         glVertexAttribPointer_ptr(kAttrTexCoord0Index, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, tex));
         glEnableVertexAttribArray_ptr(kAttrMatrixSlotIndex);
         glVertexAttribPointer_ptr(kAttrMatrixSlotIndex, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, matrixSlot));
-        glBindVertexArray_ptr(0);
+        glBindVertexArray_ptr(GLuint(sStreamVAO));
     }
     glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
     return true;
@@ -396,7 +396,7 @@ bool shadow_build() {
     glUniform4f_ptr(glGetUniformLocation_ptr(sShadowMaskProgram, "uShadowParams"),
                     sPostEffects.shadowStrength, 1.0f / float(sShadowMapSize), 0.0015f, sPostEffects.shadowRange);
     glDrawArrays(GL_TRIANGLES, 0, 3);
-    glBindVertexArray_ptr(0);
+    glBindVertexArray_ptr(GLuint(sStreamVAO));
     glDepthMask(GL_TRUE);
     glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
     sBoundTextures[0] = 0;
