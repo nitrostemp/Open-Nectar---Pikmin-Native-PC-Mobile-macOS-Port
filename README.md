@@ -2,14 +2,16 @@
 
 <img width="2172" height="476" alt="opennectarlogo (1)" src="https://github.com/user-attachments/assets/71283101-1be5-4ca4-9b16-488320343cc8" />
 
-Native, experimental, and open-source port of *Pikmin* (GameCube, 2001) for **Linux, Windows and Android**. Runs the game code directly on the host system and translates GX to OpenGL; does not use Dolphin or any emulator.
+Native, experimental, and open-source port of *Pikmin* (GameCube, 2001) for **Linux, Windows, macOS and Android**. Runs the game code directly on the host system and translates GX to OpenGL; does not use Dolphin or any emulator.
 
 This project builds upon the decompilation by [projectPiki/pikmin](https://github.com/projectPiki/pikmin) and adds a native PC port layer.
+
+This repository is **Open Nectar Fusion**: the Pikmin port lives in `games/pikmin1/`, and an experimental port of *Pikmin 2* (GameCube, 2004), built on the [projectPiki/pikmin2](https://github.com/projectPiki/pikmin2) decompilation, lives in `games/pikmin2/`. One launcher starts both. See [Pikmin 2 (experimental)](#pikmin-2-experimental).
 
 ## Project Status
 
 **Functional:**
-- Native builds for Linux x86-64 and Windows x86-64, Android from the same source
+- Native builds for Linux x86-64, Windows x86-64 and macOS (Apple Silicon), Android from the same source
 - Most of the game playable from start to finish
 - 30, 60 or 120 FPS gameplay, selectable in-game
 - Full audio: the game's original JAudio engine, with a software DSP
@@ -162,6 +164,26 @@ copy the folder). To remove it, delete it.
 | The image is rejected | It must be Pikmin USA Rev 1 or Pikmin Europe. RVZ/WIA/GCZ also needs the Dolphin converter; ISO/GCM does not |
 | Disc conversion fails | Check the temporary folder's free space and select the converter from a complete Dolphin installation, or use ISO/GCM |
 
+### macOS
+
+Download **`nectar-macos-arm64.zip`** and double-click it. The package is not
+notarised by Apple, so macOS refuses to open its files until the download flag
+is cleared, once:
+
+```sh
+xattr -dr com.apple.quarantine nectar-macos
+```
+
+It needs a Mac with Apple Silicon (M1 or later) on macOS 12 Monterey or newer.
+SDL travels in `lib/` beside the executables, so nothing has to be installed
+through Homebrew; keep the folder together.
+
+Open `nectar-macos/nectar-launcher` and press **Install** under the Pikmin
+cover: it asks for your disc image and a folder with the usual macOS dialogs,
+then extracts the game data there. That folder ends up with your saves and
+settings too; open the launcher inside it to play from then on. Its update
+check reads this repository's releases, where the macOS package is published.
+
 ### Android
 
 **What you need**
@@ -233,7 +255,39 @@ nectar-launcher --extract-only    # extract assets only, don't run
 nectar-launcher --help
 ```
 
+## Pikmin 2 (experimental)
+
+`games/pikmin2/` is a work-in-progress native port of *Pikmin 2*. It is not in
+the release packages yet: build it from source, as below. With the European
+disc it boots, plays the opening movie and reaches the first day, and it runs
+on macOS as well as Linux.
+
+- **Disc**: only Pikmin 2 Europe (`GPVP01`), the release the port is developed
+  against. The USA disc (`GPVE01`) stops at boot.
+- **Audio**: the game's own JAudio engine plays music and effects, but the
+  console's DSP effects (reverb, echo) are not implemented yet, so it sounds
+  drier than on a GameCube.
+
+The game reads the disc's files from `games/pikmin2/assets/`. Extract them from
+an ISO/GCM (convert RVZ/WIA/GCZ to ISO with Dolphin first), mark the folder for
+the launcher, then build and run both games:
+
+```sh
+scripts/extract-gc-disc.py "/path/to/Pikmin 2 (Europe).iso" games/pikmin2/assets
+touch games/pikmin2/assets/.pikmin2-assets
+scripts/build-fusion.sh
+scripts/run-fusion.sh
+```
+
+Pikmin 2 then shows a **Play** button in the launcher. Its memory card lives
+in `build/pikmin2/save/`. [games/pikmin2/README.md](games/pikmin2/README.md)
+has the details.
+
 ## Build from source
+
+Pikmin 1's sources and build files are in `games/pikmin1/`: run the commands
+below from that folder (`cd games/pikmin1`). To build both games at once, see
+[Fusion: both games](#fusion-both-games).
 
 ### Requirements
 
@@ -242,6 +296,7 @@ nectar-launcher --help
 - SDL2
 - OpenGL
 - zenity (optional on Linux, for the graphical dialog)
+- Xcode Command Line Tools and Homebrew (macOS); Homebrew GCC for Pikmin 2
 
 ### Linux
 
@@ -307,6 +362,37 @@ That writes `packaging/windows/out/nectar-windows/` with `nectar.exe`,
 `nectar-pal.exe` and `nectar-launcher.exe`, and zips it as
 `packaging/windows/out/nectar-windows.zip`.
 
+### macOS (Apple Silicon)
+
+Pikmin 1 builds natively with Apple's Clang. macOS has no OpenGL compatibility
+profile, so the game runs on a Core 4.1 context.
+
+```sh
+xcode-select --install
+brew install cmake ninja sdl2
+
+cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DPIKMIN_NATIVE_JAUDIO=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+The result is `build/bin/nectar` and `build/bin/nectar-launcher`, linked
+against Homebrew's SDL.
+
+To ship a folder with both USA and PAL builds:
+
+```sh
+packaging/macos/package-standalone.sh
+```
+
+That writes `packaging/macos/out/nectar-macos/` with `nectar`, `nectar-pal`,
+`nectar-launcher` and SDL in `lib/`. The executables load SDL from
+`@executable_path/lib` and are signed ad hoc, so the folder runs on any Apple
+Silicon Mac without Homebrew. Pikmin 2 on macOS is covered in
+[Fusion: both games](#fusion-both-games).
+
 ### Run after building
 
 ```sh
@@ -341,7 +427,72 @@ repository (see `packaging/android/README-firma.txt`). With the key in place:
 produces `packaging/android/out/open_nectar_<version>.apk`, its SHA-256 and
 the README that goes with it.
 
+### Fusion: both games
+
+From the repository root, `scripts/build-fusion.sh` builds Pikmin 1 and its
+launcher into `build/pikmin1/` and Pikmin 2 into `build/pikmin2/`, and
+`scripts/run-fusion.sh` opens the launcher with both games:
+
+```sh
+scripts/build-fusion.sh
+scripts/run-fusion.sh
+```
+
+PowerShell versions of both sit beside them for Windows.
+
+On macOS, `build-fusion.sh` builds Pikmin 2 through
+`scripts/build-pikmin2-macos.sh`, which needs Homebrew's GCC on top of the
+packages above:
+
+```sh
+brew install gcc cmake ninja sdl2
+```
+
+The decompiled Pikmin 2 code relies on GCC's permissive mode, which Apple's
+Clang rejects, and its sources contain headers whose names differ only in
+capitalisation, which macOS's file system cannot tell apart. The script mirrors
+`games/pikmin2` onto a case-sensitive disk image (`build/macos-cs.sparseimage`,
+which only takes the space it uses) and compiles there, so the source tree
+itself stays as it is. Pikmin 2's tests run from that build:
+
+```sh
+ctest --test-dir build/macos-cs/build-RelWithDebInfo --output-on-failure
+```
+
+### Release builds (GitHub Actions)
+
+`.github/workflows/packages.yml` runs the packaging scripts above on GitHub's
+runners: `packaging/linux/build-release.sh` on Ubuntu (tarball and AppImage),
+Windows cross-compiled with MinGW, macOS on an Apple Silicon runner and Android
+with the SDK's NDK. A separate job checks that Pikmin 2 builds and passes its
+tests on macOS; it does not gate releases. Every push builds the packages as
+downloadable artifacts; pushing a tag also publishes them as a release:
+
+```sh
+git tag 0.9.2-macos
+git push origin 0.9.2-macos
+```
+
+The APK is signed with the project key when the repository has the secrets
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD`; without them it is signed with a debug key, which
+installs fine but cannot update an APK signed with another key.
+
 ## Project structure
+
+The repository root holds the two games and the scripts that build them
+together:
+
+```
+.
+├── games/
+│   ├── pikmin1/   # The Pikmin port: everything described below
+│   └── pikmin2/   # The experimental Pikmin 2 port
+├── scripts/       # Fusion build/run scripts, macOS Pikmin 2 build, disc extractor
+└── .github/       # GitHub Actions workflows
+```
+
+Inside `games/pikmin1/`:
 
 ```
 .
