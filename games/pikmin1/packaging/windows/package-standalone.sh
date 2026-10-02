@@ -62,9 +62,12 @@ if ((clean)); then
     rm -rf "${build_dir}" "${pal_build_dir}" "${output_dir}"
 fi
 
+# NATIVE_OPTIMIZE apagado: -march=native ataría el paquete a la CPU de la
+# máquina que compila (y no existe al compilar desde otra arquitectura).
 cmake_common=(
     -DCMAKE_TOOLCHAIN_FILE="${toolchain}"
     -DCMAKE_BUILD_TYPE=Release
+    -DPIKMIN_NATIVE_OPTIMIZE=OFF
     -DPIKMIN_NATIVE_JAUDIO=ON
     -DPIKMIN_STATIC_RUNTIME=ON
     -DOPEN_NECTAR_VERSION="${OPEN_NECTAR_VERSION:-$(sed -n 's/.*set(OPEN_NECTAR_VERSION "\([^"]*\)".*/\1/p' "${repo_root}/CMakeLists.txt")}"

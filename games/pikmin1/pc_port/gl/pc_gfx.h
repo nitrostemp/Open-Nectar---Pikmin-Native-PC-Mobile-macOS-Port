@@ -13,6 +13,11 @@ extern "C" {
 void pc_gfx_init(void);
 void pc_gfx_begin_frame(void);
 void pc_gfx_present(void);
+// Bracket the window swap. present() leaves the internal render target bound
+// for the next frame; these put the window framebuffer in place for the swap
+// and restore the previous binding afterwards.
+void pc_gfx_before_swap(void);
+void pc_gfx_after_swap(void);
 void pc_gfx_perf_scope_begin(const char* name);
 void pc_gfx_perf_scope_end(void);
 

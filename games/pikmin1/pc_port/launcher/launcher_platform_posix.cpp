@@ -14,6 +14,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -89,11 +92,22 @@ fs::path executablePath()
     if (env != nullptr) {
         return fs::path(env);
     }
+#if defined(__APPLE__)
+    // macOS has no /proc; dyld knows the path the executable was loaded from.
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::vector<char> path(size + 1);
+    if (_NSGetExecutablePath(path.data(), &size) != 0) return {};
+    std::error_code error;
+    const fs::path resolved = fs::canonical(path.data(), error);
+    return error ? fs::path(path.data()) : resolved;
+#else
     std::vector<char> path(4096);
     const ssize_t count = readlink("/proc/self/exe", path.data(), path.size() - 1);
     if (count <= 0) return {};
     path[static_cast<std::size_t>(count)] = '\0';
     return fs::path(path.data());
+#endif
 }
 
 fs::path defaultDataRoot()

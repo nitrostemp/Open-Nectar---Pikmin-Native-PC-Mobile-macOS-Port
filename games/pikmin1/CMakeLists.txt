@@ -53,9 +53,9 @@ set(PC_PORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/pc_port")
 # pasar con -fpermissive: el especificador `register` y tomar la dirección de
 # un temporal (stack_new). Ambas se relajan sólo en Clang.
 set(CLANG_LEGACY_RELAXATIONS
-    $<$<CXX_COMPILER_ID:Clang>:-Wno-register>
-    $<$<CXX_COMPILER_ID:Clang>:-Wno-address-of-temporary>
-    $<$<CXX_COMPILER_ID:Clang>:-Wno-unknown-warning-option>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-register>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-address-of-temporary>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-unknown-warning-option>
 )
 set(LEGACY_COMPILE_OPTIONS
     -include "${PC_PORT_DIR}/pc_types.h"
@@ -564,6 +564,9 @@ elseif (ANDROID)
     target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES} GLESv3 EGL log android)
     # Android 15 exige bibliotecas alineadas a páginas de 16 KB en arm64.
     target_link_options(${NECTAR_GAME} PRIVATE "-Wl,-z,max-page-size=16384")
+elseif (APPLE)
+    target_link_libraries(${NECTAR_GAME} PRIVATE ${SDL2_LIBRARIES} OpenGL::GL)
+    target_include_directories(${NECTAR_GAME} PRIVATE ${SDL2_INCLUDE_DIRS})
 else()
     if(PIKMIN_GLES)
         target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES} OpenGL::GLES3 X11)
@@ -579,6 +582,9 @@ endif()
 # En Android tampoco: el binario será una biblioteca compartida, no un
 # ejecutable con símbolos exportados.
 if (NOT WIN32 AND NOT ANDROID)
+    # On macOS clang turns this into ld64's -export_dynamic. That is required,
+    # not just cosmetic: under LTO ld64 otherwise internalises the game's global
+    # operator new/delete, so libc++.dylib frees game allocations with free().
     target_link_options(${NECTAR_GAME} PRIVATE -rdynamic)
 elseif (WIN32)
     # SDL2's CMake package links -mwindows, which hides the console and with it
@@ -614,6 +620,9 @@ if((PIKMIN_BUILD_LAUNCHER OR ANDROID) AND NOT TARGET pikmin_disc_image)
     target_include_directories(pikmin_disc_image PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/pc_port/launcher)
     target_compile_options(pikmin_disc_image PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    if (APPLE)
+        target_link_libraries(pikmin_disc_image PUBLIC iconv) # FST names in Shift-JIS
+    endif()
     set_property(TARGET pikmin_disc_image PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 

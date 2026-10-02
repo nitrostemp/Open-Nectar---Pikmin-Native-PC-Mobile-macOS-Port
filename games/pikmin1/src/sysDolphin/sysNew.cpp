@@ -70,7 +70,17 @@ static void unmap_pages(void* p, size_t bytes) { munmap(p, bytes); }
 #endif
 static constexpr size_t BOOT_BUCKET_COUNT = 4096;
 
-static std::mutex sAllocMutex;
+// Never destroyed. Static destructors run in an unspecified order and several
+// of them still free memory through operator delete; locking a destroyed
+// mutex is harmless on glibc but throws on macOS, and the throw allocates,
+// which recurses until the stack runs out. Placement new keeps the mutex out
+// of the teardown without allocating through this file's own operator new.
+static std::mutex& alloc_mutex()
+{
+	alignas(std::mutex) static unsigned char storage[sizeof(std::mutex)];
+	static std::mutex* const mutex = new (storage) std::mutex;
+	return *mutex;
+}
 static BootBlockHeader* sBootBuckets[BOOT_BUCKET_COUNT] = {};
 static size_t sLiveAllocations = 0;
 static size_t sLiveBytes = 0;
@@ -110,7 +120,7 @@ static size_t allocationBucket(const void* ptr)
 
 void piki_pc_dump_alloc_stats(void)
 {
-	std::lock_guard<std::mutex> lock(sAllocMutex);
+	std::lock_guard<std::mutex> lock(alloc_mutex());
 	static const char* kClassNames[SIZE_CLASS_COUNT] = {
 		"<1K", "1K-16K", "16K-64K", "64K-256K", "256K-1M", "1M-8M", "8M-64M", ">64M"
 	};
@@ -172,7 +182,7 @@ void* piki_pc_alloc(size_t size)
 
 	void* result = header + 1;
 	{
-		std::lock_guard<std::mutex> lock(sAllocMutex);
+		std::lock_guard<std::mutex> lock(alloc_mutex());
 		const size_t bucket = allocationBucket(result);
 		header->mNext = sBootBuckets[bucket];
 		sBootBuckets[bucket] = header;
@@ -209,7 +219,7 @@ void piki_pc_free(void* ptr)
 		return;
 	}
 
-	std::lock_guard<std::mutex> lock(sAllocMutex);
+	std::lock_guard<std::mutex> lock(alloc_mutex());
 	const size_t bucket = allocationBucket(ptr);
 	for (BootBlockHeader** link = &sBootBuckets[bucket]; *link; link = &(*link)->mNext) {
 		BootBlockHeader* header = *link;

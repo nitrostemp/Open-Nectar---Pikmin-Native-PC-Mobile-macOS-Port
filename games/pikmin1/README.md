@@ -2,14 +2,14 @@
 
 <img width="2172" height="476" alt="opennectarlogo (1)" src="https://github.com/user-attachments/assets/71283101-1be5-4ca4-9b16-488320343cc8" />
 
-Native, experimental, and open-source port of *Pikmin* (GameCube, 2001) for **Linux, Windows and Android**. Runs the game code directly on the host system and translates GX to OpenGL; does not use Dolphin or any emulator.
+Native, experimental, and open-source port of *Pikmin* (GameCube, 2001) for **Linux, Windows, macOS and Android**. Runs the game code directly on the host system and translates GX to OpenGL; does not use Dolphin or any emulator.
 
 This project builds upon the decompilation by [projectPiki/pikmin](https://github.com/projectPiki/pikmin) and adds a native PC port layer.
 
 ## Project Status
 
 **Functional:**
-- Native builds for Linux x86-64 and Windows x86-64, Android from the same source
+- Native builds for Linux x86-64, Windows x86-64 and macOS (Apple Silicon), Android from the same source
 - Most of the game playable from start to finish
 - 30, 60 or 120 FPS gameplay, selectable in-game
 - Full audio: the game's original JAudio engine, with a software DSP
@@ -165,6 +165,34 @@ copy the folder). To remove it, delete it.
 | The image is rejected | It must be Pikmin USA Rev 1 or Pikmin Europe. RVZ/WIA/GCZ also needs the Dolphin converter; ISO/GCM does not |
 | Disc conversion fails | Check the temporary folder's free space and select the converter from a complete Dolphin installation, or use ISO/GCM |
 
+### macOS
+
+```sh
+ditto -x -k nectar-macos-arm64.zip .
+xattr -dr com.apple.quarantine nectar-macos
+cd nectar-macos
+```
+
+The package is not notarised by Apple, so macOS refuses to open downloaded
+files until the `xattr` line above clears their quarantine flag. It needs a Mac
+with Apple Silicon (M1 or later) on macOS 12 Monterey or newer, and about 1 GB
+free where you install it.
+
+Run the launcher:
+
+```sh
+./nectar-launcher --rom /path/to/Pikmin.iso --install-dir ~/Games/OpenNectar
+```
+
+It verifies the image, extracts the assets, copies the game into that folder and
+starts it. Double-clicking `nectar-launcher` in Finder opens the same installer
+in Terminal, which asks for both paths. To play afterwards, run
+`./nectar-launcher` again from the installation folder.
+
+SDL travels in `lib/` next to the executables, so nothing needs installing
+through Homebrew; keep the folder together. Saves stay in `save/` inside the
+installation folder, as on Linux and Windows.
+
 ### Android
 
 **What you need**
@@ -194,7 +222,7 @@ move and resize them); Bluetooth and USB controllers work too. The
 To update, install the new APK over the old one — assets and saves stay.
 Uninstalling deletes them.
 
-### Both platforms
+### All platforms
 
 The launcher asks for your disc image, extracts the assets it needs and starts the
 game. Your disc image is never copied or modified.
@@ -245,6 +273,7 @@ nectar-launcher --help
 - SDL2
 - OpenGL
 - zenity (optional on Linux, for the graphical dialog)
+- Xcode Command Line Tools and Homebrew (macOS)
 
 ### Linux
 
@@ -272,8 +301,9 @@ cmake --build build-pal -j"$(nproc)"
 ```
 
 The release packages carry both, and the launcher installs whichever the disc
-asks for, named `nectar`. `packaging/linux/build-release.sh` and
-`packaging/windows/package-standalone.sh` each build both executables; see
+asks for, named `nectar`. `packaging/linux/build-release.sh`,
+`packaging/windows/package-standalone.sh` and
+`packaging/macos/package-standalone.sh` each build both executables; see
 [docs/COMPILAR_RELEASES.md](docs/COMPILAR_RELEASES.md) for every release
 package (Linux tar.gz and AppImage, Windows zip, Android APK).
 
@@ -310,6 +340,35 @@ That writes `packaging/windows/out/nectar-windows/` with `nectar.exe`,
 `nectar-pal.exe` and `nectar-launcher.exe`, and zips it as
 `packaging/windows/out/nectar-windows.zip`.
 
+### macOS (Apple Silicon)
+
+The macOS executable is built natively with Apple's Clang. macOS has no OpenGL
+compatibility profile, so the game runs on a Core 4.1 context.
+
+```sh
+xcode-select --install
+brew install cmake ninja sdl2
+
+cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DPIKMIN_NATIVE_JAUDIO=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+The result is `build/bin/nectar`, linked against Homebrew's SDL.
+
+To ship a folder with both USA and PAL builds:
+
+```sh
+packaging/macos/package-standalone.sh
+```
+
+That writes `packaging/macos/out/nectar-macos/` with `nectar`, `nectar-pal`,
+`nectar-launcher` and SDL in `lib/`. The executables load SDL from
+`@executable_path/lib` and are signed ad hoc, so the folder runs on any Apple
+Silicon Mac without Homebrew.
+
 ### Run after building
 
 ```sh
@@ -343,6 +402,25 @@ repository (see `packaging/android/README-firma.txt`). With the key in place:
 
 produces `packaging/android/out/open_nectar_<version>.apk`, its SHA-256 and
 the README that goes with it.
+
+### Release builds (GitHub Actions)
+
+`.github/workflows/packages.yml` runs the four packaging scripts above on
+GitHub's runners: Linux in an Ubuntu 26.04 container (the package bundles the
+build system's libraries, so this sets what ships), Windows cross-compiled with
+MinGW on Ubuntu, Android on Ubuntu with the SDK's NDK, and macOS on an Apple
+Silicon runner. Every push builds all four as downloadable artifacts; pushing a
+tag also publishes them as a release:
+
+```sh
+git tag 0.9.1
+git push origin 0.9.1
+```
+
+The APK is signed with the project key when the repository has the secrets
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD`; without them it is signed with a debug key, which
+installs fine but cannot update an APK signed with another key.
 
 ## Project structure
 

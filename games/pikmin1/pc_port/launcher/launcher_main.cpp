@@ -505,6 +505,25 @@ bool installExecutables(const fs::path& sourceDirectory, const fs::path& install
     if (fs::is_regular_file(installDirectory / "lib" / "ld-linux-x86-64.so.2", cleanup)) {
         fs::remove_all(installDirectory / "lib", cleanup);
     }
+#if defined(__APPLE__)
+    // The macOS package links SDL from lib/ beside the executables
+    // (@executable_path/lib), so the folder has to travel with them.
+    if (fs::is_directory(sourceLib)) {
+        const fs::path destLib = installDirectory / "lib";
+        std::error_code eqEc;
+        if (!(fs::exists(destLib) && fs::equivalent(sourceLib, destLib, eqEc) && !eqEc)) {
+            fs::create_directories(destLib, ec);
+            if (!ec) {
+                fs::copy(sourceLib, destLib,
+                         fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+            }
+            if (ec) {
+                failure = "Could not copy the lib folder: " + ec.message();
+                return false;
+            }
+        }
+    }
+#endif
     return true;
 #endif
 }

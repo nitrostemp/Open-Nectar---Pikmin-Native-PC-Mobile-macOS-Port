@@ -18,6 +18,8 @@
 #include <windows.h>
 #elif defined(__linux__)
 #include <unistd.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -63,6 +65,15 @@ fs::path installDir()
 	std::vector<char> path(4096);
 	const ssize_t count = readlink("/proc/self/exe", path.data(), path.size() - 1);
 	if (count > 0) { path[static_cast<std::size_t>(count)] = '\0'; return fs::path(path.data()).parent_path(); }
+#elif defined(__APPLE__)
+	uint32_t size = 0;
+	_NSGetExecutablePath(nullptr, &size);
+	std::vector<char> path(size + 1);
+	if (_NSGetExecutablePath(path.data(), &size) == 0) {
+		std::error_code error;
+		const fs::path resolved = fs::canonical(path.data(), error);
+		return (error ? fs::path(path.data()) : resolved).parent_path();
+	}
 #endif
 	return {};
 }
