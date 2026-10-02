@@ -25,10 +25,10 @@ jobs:
     # both the tarball and the AppImage.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build release packages
         run: ${GAME_DIR}/packaging/linux/build-release.sh --clean
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nectar-linux
           path: |
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     container: debian:12
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: nectar-linux
       - name: Install the documented runtime
@@ -63,7 +63,7 @@ jobs:
     # Cross-compiled with MinGW-w64, as packaging/windows expects.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install MinGW-w64
         run: sudo apt-get update && sudo apt-get install -y cmake mingw-w64 zip
       - name: Use the POSIX thread model
@@ -83,7 +83,7 @@ jobs:
         run: ${GAME_DIR}/packaging/windows/package-standalone.sh --clean
       - name: Archive package
         run: (cd "${GAME_DIR}/packaging/windows/out" && zip -qr "${GITHUB_WORKSPACE}/nectar-windows.zip" nectar-windows)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nectar-windows
           path: nectar-windows.zip
@@ -95,12 +95,12 @@ jobs:
       # for, so SDL2 is built here with the same deployment target as the game.
       MACOSX_DEPLOYMENT_TARGET: "12.0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install build tools
         run: brew install ninja
       - name: Cache SDL2
         id: sdl-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/sdl2
           key: sdl2-${{ env.SDL2_VERSION }}-macos${{ env.MACOSX_DEPLOYMENT_TARGET }}-arm64
@@ -124,7 +124,7 @@ jobs:
         # ditto keeps execute permissions and code signatures, and Finder
         # extracts the result with a double-click.
         run: ditto -c -k --keepParent "${GAME_DIR}/packaging/macos/out/nectar-macos" nectar-macos-arm64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nectar-macos-arm64
           path: nectar-macos-arm64.zip
@@ -132,8 +132,8 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -172,7 +172,7 @@ jobs:
       - name: Remove signing material
         if: always()
         run: rm -f "${GAME_DIR}/android/keystore.properties" "${RUNNER_TEMP}/release.jks"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: open-nectar-apk
           path: |
@@ -186,7 +186,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -199,7 +199,7 @@ jobs:
               exit 1
             fi
           done
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true
