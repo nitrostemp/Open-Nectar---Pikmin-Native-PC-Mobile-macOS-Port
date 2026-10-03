@@ -42,6 +42,7 @@
 
 #include "pc_window.h"
 #include "pc_gyro.h"
+#include "pc_dsu.h"
 #include "pc_permadeath.h"
 #include "pc_coop.h"
 #include "pc_vs.h"
@@ -102,6 +103,11 @@ struct PcConfig {
     float gyroSensitivity = 1.0f; // 0.1 - 5.0
     int gyroInvert = 0;           // bit 0 = horizontal, bit 1 = vertical
     float gyroBias[3] = { 0.0f, 0.0f, 0.0f }; // rad/s, measured by Calibrate
+
+    // DSU (Cemuhook) controller from a local server, e.g. NSO GC Driver.
+    int dsuEnabled = 0;
+    int dsuSlot = 0;      // 0-3
+    int dsuPort = 26760;  // config file only
 
     // Stick dead zone (0 - 127, default 8)
     int stickDeadZone = 8;
@@ -243,6 +249,9 @@ struct PcConfig {
         gyroSensitivity = 1.0f;
         gyroInvert = 0;
         gyroBias[0] = gyroBias[1] = gyroBias[2] = 0.0f;
+        dsuEnabled = 0;
+        dsuSlot = 0;
+        dsuPort = 26760;
         stickDeadZone = 8;
         stickInvert = 0;
         cStickInvert = 0;
@@ -1144,6 +1153,9 @@ void saveConfig() {
     out << "gyroSensitivity = " << sConfig.gyroSensitivity << "\n";
     out << "gyroInvert = " << sConfig.gyroInvert << "\n";
     out << "gyroBias = " << sConfig.gyroBias[0] << " " << sConfig.gyroBias[1] << " " << sConfig.gyroBias[2] << "\n";
+    out << "dsuEnabled = " << sConfig.dsuEnabled << "\n";
+    out << "dsuSlot = " << sConfig.dsuSlot << "\n";
+    out << "dsuPort = " << sConfig.dsuPort << "\n";
     out << "stickDeadZone = " << sConfig.stickDeadZone << "\n";
     out << "stickInvert = " << sConfig.stickInvert << "\n";
     out << "cStickInvert = " << sConfig.cStickInvert << "\n";
@@ -1220,6 +1232,16 @@ void loadConfig() {
         }
         else if (key == "gyroInvert") {
             sConfig.gyroInvert = atoi(val.c_str()) & 3;
+        }
+        else if (key == "dsuEnabled") {
+            sConfig.dsuEnabled = atoi(val.c_str()) ? 1 : 0;
+        }
+        else if (key == "dsuSlot") {
+            sConfig.dsuSlot = std::clamp(atoi(val.c_str()), 0, 3);
+        }
+        else if (key == "dsuPort") {
+            const int port = atoi(val.c_str());
+            sConfig.dsuPort = port >= 1 && port <= 65535 ? port : 26760;
         }
         else if (key == "gyroBias") {
             float b[3] = { 0.0f, 0.0f, 0.0f };
@@ -2425,6 +2447,15 @@ void advancedRowChange(int row, bool left, bool right) {
     // Gyro calibrate: measures the resting drift of the active sensor.
     else if (row == 7) {
         if (left || right) pc_gyro_calibrate_start();
+    }
+    // DSU controller on/off
+    else if (row == 8) {
+        if (left || right) sPending.dsuEnabled = sPending.dsuEnabled ? 0 : 1;
+    }
+    // DSU slot 1-4
+    else if (row == 9) {
+        if (right) sPending.dsuSlot = (sPending.dsuSlot + 1) & 3;
+        if (left) sPending.dsuSlot = (sPending.dsuSlot + 3) & 3;
     }
 }
 
@@ -5807,6 +5838,10 @@ int pc_settings_get_instant_whistle(void) { if (pc_speedrun_active()) return 0;
     return sConfig.instantWhistle;
 }
 
+int pc_settings_get_dsu_enabled(void) { return sConfig.dsuEnabled; }
+int pc_settings_get_dsu_slot(void) { return sConfig.dsuSlot; }
+int pc_settings_get_dsu_port(void) { return sConfig.dsuPort; }
+
 int pc_settings_get_gyro_enabled(void) { if (pc_speedrun_active()) return 0;
     return sConfig.gyroEnabled;
 }
@@ -6094,6 +6129,13 @@ void advancedRowValue(int i, char* value, size_t n) {
         else snprintf(value, n, "Press A (keep still)");
         break;
     }
+    case 8: {
+        // Status follows the saved config: the client only runs what was confirmed.
+        const bool live = sPending.dsuEnabled && sConfig.dsuEnabled && sPending.dsuSlot == sConfig.dsuSlot;
+        snprintf(value, n, "%s", !sPending.dsuEnabled ? "Off" : !live ? "On" : pc_dsu_connected() ? "On (connected)" : "On (no controller)");
+        break;
+    }
+    case 9: snprintf(value, n, "%d", sPending.dsuSlot + 1); break;
     default: value[0] = '\0';
     }
 }
@@ -6187,6 +6229,8 @@ const GroupRow kControlsRows[] = {
     { SRC_ADV, 5, "Gyro Sensitivity", "How far the cursor moves when you turn the pad." },
     { SRC_ADV, 6, "Gyro Invert (X/Y)", "Inverts gyro aiming: none, horizontal, vertical or both." },
     { SRC_ADV, 7, "Gyro Calibrate", "Put the pad or phone down, keep it still and press A. Fixes a drifting cursor." },
+    { SRC_ADV, 8, "DSU Controller", "Use a controller shared over DSU (Cemuhook) by a program on this computer, such as NSO GC Driver. It shows up as another gamepad." },
+    { SRC_ADV, 9, "DSU Slot", "Which of the DSU server's four controller slots to read. 1 is the first controller." },
     { SRC_RECENTER, 0, "Gyro Recenter Button", "Button that brings the cursor back in front of Olimar. A: assign it." },
     { SRC_KEYS, 0, "Keyboard Bindings", "Two keys or mouse buttons per action. A: main key, Right: second key, Left: defaults. While waiting, Del clears the slot. Shift, Ctrl and Alt can be bound." },
     { SRC_PADS, 0, "Gamepad Bindings", "Choose the pad button for each action." },
@@ -6395,6 +6439,7 @@ const char* disabledReason(const GroupRow& r) {
             return "Only used with the Mouse Cursor control scheme.";
         if ((r.idx == 5 || r.idx == 6) && !sPending.gyroEnabled) return "Turn on Gyro Aiming first.";
         if (r.idx == 7 && !pc_gyro_available()) return "No gyro found. Connect a pad with a gyro.";
+        if (r.idx == 9 && !sPending.dsuEnabled) return "Turn on DSU Controller first.";
         break;
     case SRC_RECENTER:
         if (!sPending.gyroEnabled) return "Turn on Gyro Aiming first.";

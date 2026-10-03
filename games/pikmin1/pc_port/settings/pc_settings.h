@@ -102,6 +102,10 @@ int pc_settings_get_no_day_advance(void);
 int pc_settings_get_all_onions(void);          ///< da las tres cebollas en la partida
 /// Apuntado con giroscopio (mandos compatibles y el sensor del móvil).
 int pc_settings_get_gyro_enabled(void);
+/// DSU (Cemuhook) client, see pc_dsu.h. Slot is 0-3.
+int pc_settings_get_dsu_enabled(void);
+int pc_settings_get_dsu_slot(void);
+int pc_settings_get_dsu_port(void);
 float pc_settings_get_gyro_sensitivity(void);
 int pc_settings_get_gyro_invert(void); ///< bit 0 horizontal, bit 1 vertical
 void pc_settings_get_gyro_bias(float out[3]);
