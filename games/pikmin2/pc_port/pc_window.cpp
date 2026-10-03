@@ -3,6 +3,7 @@
 #endif
 #include "pc_window.h"
 #include "pc_gyro.h"
+#include "pc_dsu.h"
 #include "pc_icon.h"
 #if PIKI_PC_TOUCH
 #include "gl/pc_gfx.h"
@@ -911,6 +912,10 @@ void pc_window_poll_events(PADStatus* pad) {
     pc_audio_tick();
 #endif
 
+    // Before the event loop, so a DSU pad attached this poll arrives as a
+    // normal SDL_CONTROLLERDEVICEADDED below.
+    pc_dsu_update();
+
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
@@ -1425,6 +1430,7 @@ void pc_window_shutdown(void) {
         SDL_GameControllerClose(p.ctl);
     sOpenPads.clear();
     sControllers[0] = sControllers[1] = nullptr;
+    pc_dsu_shutdown();
     if (sGLContext) {
         SDL_GL_DeleteContext(sGLContext);
         sGLContext = nullptr;

@@ -271,6 +271,7 @@ if(PIKMIN2_ENABLE_PORT_LAYER)
         ${PC_PORT_DIR}/pc_window.cpp
         ${PC_PORT_DIR}/pc_discord.cpp
         ${PC_PORT_DIR}/pc_gyro.cpp
+        ${PC_PORT_DIR}/pc_dsu.cpp
         ${PC_PORT_DIR}/pc_icon.cpp
         ${PC_PORT_DIR}/pc_file_dialog.cpp
         ${PC_PORT_DIR}/mods/pc_hd_model_convert.cpp
